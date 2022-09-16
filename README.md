@@ -9,7 +9,7 @@ The Home Assitant VictoriaMetrics integration records all events and state chang
 3. Add this to your `configuration.yaml` file:
 
 ```
-graphite:
+victoriametrics:
 ```
 
 4. Restart Home Assistant
@@ -17,13 +17,17 @@ graphite:
 ## Configuration variables
 
 **host** string (optional, default: localhost)
+
 IP address of your victoriametrics host, e.g., 192.168.1.10.
 
 **port** integer (optional, default: 2003)
+
 Graphite port on victoriametrics host.
 
 **protocol** string (optional, default: tcp)
+
 Type of communication protocol: tcp or udp.
 
 **prefix** string (optional, default: ha)
+
 Prefix is the metric prefix in victoriametrics.
