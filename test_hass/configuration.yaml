@@ -1,0 +1,11 @@
+logger:
+  default: warning
+  logs:
+    custom_components.victoriametrics: debug
+
+# Loads default set of integrations. Do not remove.
+default_config:
+
+victoriametrics:
+  host: localhost
+
