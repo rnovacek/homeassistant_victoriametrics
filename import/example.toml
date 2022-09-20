@@ -1,0 +1,14 @@
+start = 2022-09-01T00:00:00Z
+end = now
+prefix = ha
+
+[input]
+type = influxV2
+url = http://localhost:18086
+org_id = 12345
+token = XYZ
+bucket = homeassistant
+
+[output]
+type = victoriametrics
+url = http://admin:1234@127.0.0.1:8428
