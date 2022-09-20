@@ -1,34 +1,30 @@
 """Support for sending data to a VictoriaMetrics installation."""
 from contextlib import suppress
+import json
 import logging
 import queue
-import socket
 import threading
-import time
+from typing import Dict, List, Sequence, Tuple, TypedDict, Union
 
 import voluptuous as vol
+import requests
+import ciso8601
 
 from homeassistant.const import (
-    CONF_HOST,
-    CONF_PORT,
+    CONF_URL,
     CONF_PREFIX,
-    CONF_PROTOCOL,
     EVENT_HOMEASSISTANT_START,
     EVENT_HOMEASSISTANT_STOP,
     EVENT_STATE_CHANGED,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, Event, State
 from homeassistant.helpers import state
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 _LOGGER = logging.getLogger(__name__)
 
-PROTOCOL_TCP = "tcp"
-PROTOCOL_UDP = "udp"
-DEFAULT_HOST = "localhost"
-DEFAULT_PORT = 2003
-DEFAULT_PROTOCOL = PROTOCOL_TCP
+DEFAULT_URL = "http://localhost:8428"
 DEFAULT_PREFIX = "ha"
 DOMAIN = "victoriametrics"
 
@@ -36,11 +32,7 @@ CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema(
             {
-                vol.Optional(CONF_HOST, default=DEFAULT_HOST): cv.string,
-                vol.Optional(CONF_PORT, default=DEFAULT_PORT): cv.port,
-                vol.Optional(CONF_PROTOCOL, default=DEFAULT_PROTOCOL): vol.Any(
-                    PROTOCOL_TCP, PROTOCOL_UDP
-                ),
+                vol.Optional(CONF_URL, default=DEFAULT_URL): cv.string,
                 vol.Optional(CONF_PREFIX, default=DEFAULT_PREFIX): cv.string,
             }
         )
@@ -52,37 +44,34 @@ CONFIG_SCHEMA = vol.Schema(
 def setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the VictoriaMetrics feeder."""
     conf = config[DOMAIN]
-    host = conf.get(CONF_HOST)
+    url = conf.get(CONF_URL)
     prefix = conf.get(CONF_PREFIX)
-    port = conf.get(CONF_PORT)
-    protocol = conf.get(CONF_PROTOCOL)
 
-    if protocol == PROTOCOL_TCP:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            sock.connect((host, port))
-            sock.shutdown(2)
-            _LOGGER.debug("Connection to VictoriaMetrics possible")
-        except OSError:
-            _LOGGER.error("Not able to connect to VictoriaMetrics")
-            return False
+
+    response = requests.get(url, timeout=2)
+    if not response.ok:
+        _LOGGER.error("Not able to connect to VictoriaMetrics")
     else:
-        _LOGGER.debug("No connection check for UDP possible")
+        _LOGGER.debug("Connection to VictoriaMetrics possible")
 
-    VictoriaMetricsFeeder(hass, host, port, protocol, prefix)
+    VictoriaMetricsFeeder(hass, url, prefix)
     return True
+
+
+class Metric(TypedDict):
+    metric: Dict[str, str]
+    values: List[float]
+    timestamps: List[float]
 
 
 class VictoriaMetricsFeeder(threading.Thread):
     """Feed data to VictoriaMetrics using Graphite protocol."""
 
-    def __init__(self, hass, host, port, protocol, prefix):
+    def __init__(self, hass: HomeAssistant, url: str, prefix: str):
         """Initialize the feeder."""
         super().__init__(daemon=True)
         self._hass = hass
-        self._host = host
-        self._port = port
-        self._protocol = protocol
+        self._url = url
         # rstrip any trailing dots in case they think they need it
         self._prefix = prefix.rstrip(".")
         self._queue = queue.Queue()
@@ -92,7 +81,7 @@ class VictoriaMetricsFeeder(threading.Thread):
         hass.bus.listen_once(EVENT_HOMEASSISTANT_START, self.start_listen)
         hass.bus.listen_once(EVENT_HOMEASSISTANT_STOP, self.shutdown)
         hass.bus.listen(EVENT_STATE_CHANGED, self.event_listener)
-        _LOGGER.debug("VictoriaMetrics feeding to %s:%i initialized", self._host, self._port)
+        _LOGGER.debug("VictoriaMetrics feeding to %s initialized", self._url)
 
     def start_listen(self, event):
         """Start event-processing thread."""
@@ -113,59 +102,75 @@ class VictoriaMetricsFeeder(threading.Thread):
         else:
             _LOGGER.error("VictoriaMetrics feeder thread has died, not queuing event")
 
-    def _send_to_victoriametrics(self, data):
+    def _send_to_victoriametrics(self, metrics: Sequence[str]):
         """Send data to VictoriaMetrics using Graphite protocol."""
-        if self._protocol == PROTOCOL_TCP:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(10)
-            sock.connect((self._host, self._port))
-            sock.sendall(data.encode("utf-8"))
-            sock.send(b"\n")
-            sock.close()
+        response = requests.post(f'{self._url}/api/v1/import', data='\n'.join(metrics).encode('utf-8'), timeout=5)
+        if response.ok:
+            _LOGGER.debug('%d metrics successfully sent to victoriametrics', len(metrics))
         else:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.sendto(data.encode("utf-8") + b"\n", (self._host, self._port))
+            _LOGGER.error('Unable to send metrics to victoriametrics: %d %s', response.status_code, response.content)
 
-    def _report_attributes(self, entity_id, new_state):
-        """Report the attributes."""
-        now = time.time()
+    def _report_event(self, event: Event):
+        #entity_id, new_state
+        """Report the event."""
+        entity_id = event.data['entity_id']
+        new_state: State = event.data['new_state']
+
         things = dict(new_state.attributes)
-        _LOGGER.debug('attributes: %s', things)
-        with suppress(ValueError):
-            things["state"] = state.state_as_number(new_state)
 
-        key_values = []
+        with suppress(ValueError):
+            things['value'] = state.state_as_number(new_state)
+
+        key_values: List[Tuple[str, Union[int, float]]] = []
         tags = []
         for key, value in things.items():
-            if isinstance(value, (float, int)):
-                key_values.append((key, value))
+            num_value = None
+            if value is None:
+                continue
+            elif isinstance(value, list):
+                continue
+            elif isinstance(value, bool):
+                num_value = int(value)
+            elif isinstance(value, (float, int)):
+                num_value = value
             else:
-                tags.append(f'{key}={value}'.replace(';', '_').replace(' ', '_'))
+                try:
+                    num_value = ciso8601.parse_datetime(value).timestamp() * 1000
+                except ValueError:
+                    num_value = None
 
-        if tags:
-            tag = ';' + ';'.join(tags)
-        else:
-            tag = ''
+            if num_value:
+                key_values.append((key, num_value))
+            else:
+                tags.append((key, value))
 
         if not key_values:
             # If there is no numeric state, use 0 so we at least post attributes
-            key_values.append(('state', 0))
+            key_values.append(('value', 0))
+            tags.append(('value', new_state.state))
 
-        lines = [
-            "%s.%s.%s%s %f %i"
-            % (self._prefix, entity_id, key.replace(" ", "_"), tag, value, now)
-            for key, value in key_values
-        ]
-        if not lines:
+        metrics: List[str] = []
+
+        for key, value in key_values:
+            metric_name = f'{self._prefix}.{entity_id}.{key.replace(" ", "_")}'
+
+            metric: Metric = {
+                'metric': {
+                    '__name__': metric_name,
+                },
+                'values': [value],
+                'timestamps': [int(event.time_fired.timestamp() * 1000)],
+            }
+            for tag_key, tag_value in tags:
+                metric['metric'][tag_key] = tag_value
+
+            metrics.append(json.dumps(metric, indent=None))
+
+        if not metrics:
             return
 
-        _LOGGER.debug("Sending to victoriametrics:\n%s\n\t", '\n\t'.join(lines))
-        try:
-            self._send_to_victoriametrics("\n".join(lines))
-        except socket.gaierror:
-            _LOGGER.error("Unable to connect to host %s", self._host)
-        except OSError:
-            _LOGGER.exception("Failed to send data to victoriametrics")
+        _LOGGER.debug("Sending to victoriametrics:\n%s\n\t", '\n\t'.join(metrics))
+        self._send_to_victoriametrics(metrics)
 
     def run(self):
         """Run the process to export the data."""
@@ -188,9 +193,7 @@ class VictoriaMetricsFeeder(threading.Thread):
                     "Processing STATE_CHANGED event for %s", event.data["entity_id"]
                 )
                 try:
-                    self._report_attributes(
-                        event.data["entity_id"], event.data["new_state"]
-                    )
+                    self._report_event(event)
                 except Exception:  # pylint: disable=broad-except
                     # Catch this so we can avoid the thread dying and
                     # make it visible.
