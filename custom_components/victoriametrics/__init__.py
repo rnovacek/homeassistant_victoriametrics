@@ -1,5 +1,6 @@
 """Support for sending data to a VictoriaMetrics installation."""
 from contextlib import suppress
+from datetime import datetime
 import json
 import logging
 import queue
@@ -133,6 +134,8 @@ class VictoriaMetricsFeeder(threading.Thread):
                 continue
             elif isinstance(value, tuple):
                 continue
+            elif isinstance(value, datetime):
+                num_value = value.timestamp()
             elif isinstance(value, bool):
                 num_value = int(value)
             elif isinstance(value, (float, int)):
