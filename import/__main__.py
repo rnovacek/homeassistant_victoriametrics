@@ -34,10 +34,18 @@ class Importer:
         self.output = output
 
         self.blacklist_entities = set(self.config.get('blacklist_entities', None) or [])
+        self.whitelist_entities = self.config.get('whitelist_entities', None) or []
         self.blacklist_tags = set(self.config.get('blacklist_tags', None) or [])
 
     async def generate(self, start: datetime, end: datetime, prefix: str):
-        async for entity in self.input.get_unique_entities(start, end):
+        print('Fetching unique entities from input')
+
+        if self.whitelist_entities:
+            entities = self.whitelist_entities
+        else:
+            entities = [e async for e in self.input.get_unique_entities(start, end)]
+
+        for entity in entities:
             if entity in self.blacklist_entities:
                 print(f'Entity {entity} skipped')
                 continue
@@ -92,6 +100,14 @@ class Importer:
                             else:
                                 key_values.append((header, float_value))
                         else:
+                            if header == 'state':
+                                if value.lower() in ('zapnuto', 'zap', 'on'):
+                                    key_values.append(('value', 1))
+                                    continue
+                                elif value.lower() in ('vypnuto', 'vyp', 'off'):
+                                    key_values.append(('value', 0))
+                                    continue
+
                             key = transform_tag(header)
                             if key in self.blacklist_tags:
                                 continue

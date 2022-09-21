@@ -20,7 +20,6 @@ from(bucket: "homeassistant")
     |> keep(columns: ["entity_id"])
     |> unique(column: "entity_id")
 '''
-        print(query)
         async for row in self.get_data({
             'query': query,
         }):
