@@ -88,7 +88,7 @@ class Importer:
                             float_value = float(value)
 
                             if header == 'value':
-                                key_values.append(('state', float_value))
+                                key_values.append(('value', float_value))
                             else:
                                 key_values.append((header, float_value))
                         else:
@@ -99,7 +99,7 @@ class Importer:
 
                     if not key_values:
                         # If there is no numeric state, use 0 so we at least post attributes
-                        key_values.append(('state', 0))
+                        key_values.append(('value', 0))
 
                     assert domain
                     assert entity_id
@@ -118,15 +118,6 @@ class Importer:
                             metric['metric'][tag_key] = tag_value
 
             yield [json.dumps(metric, indent=None).encode('utf-8') for metric in metrics.values()]
-
-
-                # ['#datatype', 'string', 'long', 'dateTime:RFC3339', 'string', 'string', 'string', 'string', 'string', 'string', 'string', 'double']
-                # ['', 'result', 'table', '_time', '_measurement', 'domain', 'entity_id', 'device_class_str', 'friendly_name_str', 'icon_str', 'state_class_str', 'value']
-                # ['', '_result', '0', '2022-09-01T00:00:00.684066Z', 'W', 'sensor', 'active_power', 'power', 'Active Power', 'mdi:transmission-tower', 'measurement', '-967']
-
-
-                # {"metric":{"__name__":"ha.sensor.mycka_energy.voltage","device_class":"energy","friendly_name":"Myčka_energy","indicator_mode":"off/on","last_seen":"2022-09-19T06:13:18.658Z","power_outage_memory":"restore","state_class":"total_increasing","unit_of_measurement":"kWh"},"values":[242],"timestamps":[1663564398000]}
-
 
             print('DONE')
 
