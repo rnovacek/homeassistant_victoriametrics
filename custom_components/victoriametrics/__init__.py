@@ -129,6 +129,8 @@ class VictoriaMetricsFeeder(threading.Thread):
                 continue
             elif isinstance(value, list):
                 continue
+            elif isinstance(value, dict):
+                continue
             elif isinstance(value, bool):
                 num_value = int(value)
             elif isinstance(value, (float, int)):
