@@ -1,6 +1,6 @@
 import asyncio
 import csv
-from typing import Dict, List, Sequence, TypedDict, Union
+from typing import Dict, Generator, List, TypedDict, Union
 
 import aiohttp
 
@@ -22,7 +22,7 @@ class Victoria(OutputBase):
     def __init__(self, url: str):
         self.url = url
 
-    async def import_data(self, metrics: Sequence[bytes]):
+    async def import_data(self, metrics: Generator[bytes, None, None]):
         for attempt in range(1, self.MAX_ATTEMPTS + 1):
             async with aiohttp.ClientSession() as session:
                 try:

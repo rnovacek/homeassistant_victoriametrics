@@ -1,7 +1,7 @@
 import sys
 import asyncio
 from collections import defaultdict
-import json
+import orjson
 from typing import Dict, List, Tuple, Union
 import zoneinfo
 from datetime import datetime
@@ -133,7 +133,7 @@ class Importer:
                         for tag_key, tag_value in tags.items():
                             metric['metric'][tag_key] = tag_value
 
-            yield [json.dumps(metric, indent=None).encode('utf-8') for metric in metrics.values()]
+            yield (orjson.dumps(metric) for metric in metrics.values())
 
             print('DONE')
 

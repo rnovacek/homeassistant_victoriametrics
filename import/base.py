@@ -1,6 +1,6 @@
 
 from datetime import datetime
-from typing import AsyncGenerator, List, Sequence
+from typing import AsyncGenerator, Generator, List, Sequence
 
 
 class InputBase:
@@ -14,5 +14,5 @@ class InputBase:
 
 
 class OutputBase:
-    async def import_data(self, metrics: Sequence[bytes]):
+    async def import_data(self, metrics: Generator[bytes, None, None]):
         raise NotImplementedError()
