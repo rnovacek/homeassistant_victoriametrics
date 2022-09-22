@@ -87,7 +87,7 @@ class Importer:
                             continue
                         elif header == '_time':
                             dt = dateutil.parser.isoparse(value)
-                            timestamp = int(dt.strftime('%s')) * 1000
+                            timestamp = dt.timestamp() * 1000
                         elif header == 'domain':
                             domain = value
                         elif header == 'entity_id':
