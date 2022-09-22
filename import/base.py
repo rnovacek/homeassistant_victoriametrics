@@ -1,5 +1,6 @@
 
 from datetime import datetime
+import io
 from typing import AsyncGenerator, Generator, List, Sequence
 
 
@@ -14,5 +15,5 @@ class InputBase:
 
 
 class OutputBase:
-    async def import_data(self, metrics: Generator[bytes, None, None]):
+    async def import_data(self, metrics: io.BufferedReader):
         raise NotImplementedError()

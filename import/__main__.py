@@ -1,8 +1,9 @@
+import io
 import sys
 import asyncio
 from collections import defaultdict
 import orjson
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 import zoneinfo
 from datetime import datetime
 
@@ -25,6 +26,34 @@ def transform_tag(tag: str):
     if tag == '_measurement':
         return 'unit_of_measurement'
     return tag.removesuffix('_str')
+
+
+def iterable_to_stream(iterable, buffer_size=io.DEFAULT_BUFFER_SIZE):
+    """
+    Lets you use an iterable (e.g. a generator) that yields bytestrings as a read-only
+    input stream.
+
+    The stream implements Python 3's newer I/O API (available in Python 2's io module).
+    For efficiency, the stream is buffered.
+    """
+    class IterStream(io.RawIOBase):
+        def __init__(self):
+            self.leftover: Optional[bytes] = None
+
+        def readable(self):
+            return True
+
+        def readinto(self, b):
+            try:
+                l = len(b)  # We're supposed to return at most this much
+                chunk: bytes = self.leftover or next(iterable)
+                output, self.leftover = chunk[:l], chunk[l:]
+                b[:len(output)] = output
+                return len(output)
+            except StopIteration:
+                return 0    # indicate EOF
+
+    return io.BufferedReader(IterStream(), buffer_size=buffer_size)
 
 
 class Importer:
@@ -87,7 +116,7 @@ class Importer:
                             continue
                         elif header == '_time':
                             dt = dateutil.parser.isoparse(value)
-                            timestamp = dt.timestamp() * 1000
+                            timestamp = int(dt.timestamp() * 1000)
                         elif header == 'domain':
                             domain = value
                         elif header == 'entity_id':
@@ -133,7 +162,7 @@ class Importer:
                         for tag_key, tag_value in tags.items():
                             metric['metric'][tag_key] = tag_value
 
-            yield (orjson.dumps(metric) for metric in metrics.values())
+            yield iterable_to_stream(orjson.dumps(metric) + b'\n' for metric in metrics.values())
 
             print('DONE')
 
