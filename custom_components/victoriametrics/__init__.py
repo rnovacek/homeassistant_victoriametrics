@@ -146,7 +146,7 @@ class VictoriaMetricsFeeder(threading.Thread):
                 except ValueError:
                     num_value = None
 
-            if num_value:
+            if num_value is not None:
                 key_values.append((key, num_value))
             else:
                 tags.append((key, value))
