@@ -58,3 +58,14 @@ from(bucket: "{self.bucket}")
                 async for line in response.content:
                     parsed_line = next(csv.reader([line.decode('utf-8')]))
                     yield parsed_line
+
+
+if __name__ == '__main__':
+    import asyncio
+    from datetime import datetime
+    influx = Influx('http://192.168.1.51:18086', '29836f3997568b1d', 'ZOR6G7bk97ABIcqYeGh3-2ki440Df16G0Z3S9LJCwrWf6l1T2-vYTk-0N3XslZlwIZeGfsYSEnU8TMSBExGSdw==', 'homeassistant')
+    async def run():
+        async for data in influx.export_entity('sensor.top_obyvak', datetime(2021, 6, 1), datetime(2022, 9, 1)):
+            print(data)
+
+    asyncio.run(run())

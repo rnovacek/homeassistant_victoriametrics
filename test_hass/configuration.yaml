@@ -7,5 +7,5 @@ logger:
 default_config:
 
 victoriametrics:
-  host: localhost
+  url: http://admin:1234@localhost:8428
 
